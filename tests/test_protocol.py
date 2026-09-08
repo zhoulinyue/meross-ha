@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from aiomeross_ble.const import (
+from meross_ha.const import (
     FRAME_HEAD,
     FRAME_TAIL,
     SUBDEV_MS120,
@@ -12,7 +12,7 @@ from aiomeross_ble.const import (
     TAG_TEMP_HISTORY_COUNT,
     TAG_TEMP_HISTORY_DATA,
 )
-from aiomeross_ble.protocol import (
+from meross_ha.protocol import (
     build_identify_frame,
     build_temp_history_count_frame,
     crc16_ccitt_false,
@@ -38,7 +38,7 @@ def test_identify_frame_structure() -> None:
 def test_parse_history_count_roundtrip() -> None:
     frame = build_temp_history_count_frame(SUBDEV_MS120, msg_id=1)
     # Count query has empty TLV value; simulate a response by rebuilding.
-    from aiomeross_ble.protocol import build_meross_frame, build_tlv
+    from meross_ha.protocol import build_meross_frame, build_tlv
 
     response = build_meross_frame(
         SUBDEV_MS120, 1, build_tlv(TAG_TEMP_HISTORY_COUNT, (12).to_bytes(2, "big"))
@@ -54,7 +54,7 @@ def test_parse_history_samples() -> None:
         + ts.to_bytes(4, "big")
         + (2500).to_bytes(2, "big", signed=True)  # 25.00 C
     )
-    from aiomeross_ble.protocol import build_meross_frame, build_tlv
+    from meross_ha.protocol import build_meross_frame, build_tlv
 
     payload = build_meross_frame(
         SUBDEV_MS120, 1, build_tlv(TAG_TEMP_HISTORY_DATA, record)

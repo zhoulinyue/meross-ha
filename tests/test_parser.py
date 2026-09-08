@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from aiomeross_ble import MerossModel, parse_advertisement_data
-from aiomeross_ble.const import MEROSS_SERVICE_DATA_UUID, SUBDEV_MS120, SUBDEV_MS220
-from aiomeross_ble.psychrometrics import dew_point_celsius
+from meross_ha import MerossModel, parse_advertisement_data
+from meross_ha.const import MEROSS_SERVICE_DATA_UUID, SUBDEV_MS120, SUBDEV_MS220
+from meross_ha.psychrometrics import dew_point_celsius
 
 
 def _device(address: str = "AA:BB:CC:DD:EE:FF", name: str = "Meross-MS120-EEFF"):

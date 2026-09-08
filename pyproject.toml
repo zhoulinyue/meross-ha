@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "aiomeross-ble"
-version = "0.1.0"
+name = "meross-ha"
+version = "0.2.0"
 description = "Python library for Meross Bluetooth devices"
 readme = "README.md"
 license = "MIT"
