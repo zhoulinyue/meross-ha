@@ -56,6 +56,8 @@ _LOGGER = logging.getLogger(__name__)
 RefreshBleDevice = Callable[[], BLEDevice | None]
 WaitAdvertisement = Callable[[float], Awaitable[bool]]
 InspectBleCache = Callable[[str], None]
+# Host may return an object with ``.time`` (monotonic), e.g. HA BluetoothServiceInfoBleak.
+LastServiceInfo = Callable[[], Any | None]
 
 _LOG_SVC = "[SVC-DISCOVER]"
 _LOG_SVC_FAIL = "[SVC-DISCOVER-FAIL]"
@@ -114,6 +116,7 @@ class MerossBLEDevice:
         self._gatt_lock: asyncio.Lock | None = None
         self._wait_advertisement: WaitAdvertisement | None = None
         self._inspect_ble_cache: InspectBleCache | None = None
+        self._last_service_info_cb: LastServiceInfo | None = None
         self._last_adv_monotonic: float | None = None
         # BlueZ RemoveDevice at most once per GATT operation (identify/history).
         self._bluez_remove_done = False
@@ -125,12 +128,14 @@ class MerossBLEDevice:
         gatt_lock: asyncio.Lock | None = None,
         wait_advertisement: WaitAdvertisement | None = None,
         inspect_ble_cache: InspectBleCache | None = None,
+        last_service_info: LastServiceInfo | None = None,
     ) -> None:
         """Attach host runtime helpers used for GATT (shared slot + adv window)."""
         self._refresh_ble_device = refresh_ble_device
         self._gatt_lock = gatt_lock
         self._wait_advertisement = wait_advertisement
         self._inspect_ble_cache = inspect_ble_cache
+        self._last_service_info_cb = last_service_info
 
     @property
     def address(self) -> str:
@@ -175,7 +180,7 @@ class MerossBLEDevice:
     def _log_ble_cache(self, reason: str) -> None:
         """Dump the BLEDevice about to be used; optional host cache dump."""
         device = self._device
-        _LOGGER.info(
+        _LOGGER.debug(
             "%s %s %s using BLEDevice name=%r rssi=%s details=%s",
             self.address,
             _LOG_CACHE,
@@ -187,13 +192,19 @@ class MerossBLEDevice:
         if self._inspect_ble_cache is not None:
             self._inspect_ble_cache(reason)
 
+    def _last_service_info(self) -> Any | None:
+        """Optional host advertisement cache entry (must expose ``.time``)."""
+        if self._last_service_info_cb is None:
+            return None
+        return self._last_service_info_cb()
+
     def _log_gatt_discovery(self, client: BleakClientWithServiceCache) -> bool:
         """Log GATT services after connect; return True if Meross chars are present."""
         cached = getattr(client, "_cached_services", None)
         try:
             services = client.services
         except Exception as err:  # noqa: BLE001
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "%s %s cannot read services cached=%s: %s",
                 self.address,
                 _LOG_SVC_FAIL,
@@ -202,7 +213,7 @@ class MerossBLEDevice:
             )
             return False
         if not services:
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "%s %s empty services (cache_hit=%s client=%s)",
                 self.address,
                 _LOG_SVC_FAIL,
@@ -228,7 +239,7 @@ class MerossBLEDevice:
                 if _char_matches(char, MEROSS_CHAR_NOTIFY):
                     has_notify = True
 
-        _LOGGER.info(
+        _LOGGER.debug(
             "%s %s cache_hit=%s meross_svc=%s write=%s notify=%s "
             "service_count=%s chars=%s",
             self.address,
@@ -241,7 +252,7 @@ class MerossBLEDevice:
             chars,
         )
         if not has_service or not has_write or not has_notify:
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "%s %s missing meross_svc=%s write=%s notify=%s "
                 "expected svc=%s write=%s notify=%s",
                 self.address,
@@ -258,6 +269,7 @@ class MerossBLEDevice:
 
     async def _async_connect_and_settle(self) -> BleakClientWithServiceCache:
         """Connect once, then wait for BlueZ connection-param retune to settle."""
+        self._async_refresh_ble_device()
         try:
             client = await establish_connection(
                 BleakClientWithServiceCache,
@@ -266,14 +278,14 @@ class MerossBLEDevice:
                 max_attempts=1,
             )
         except Exception as err:  # noqa: BLE001
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "%s %s establish_connection failed: %s",
                 self.address,
                 _LOG_SVC_FAIL,
                 err,
             )
             raise
-        _LOGGER.info(
+        _LOGGER.debug(
             "%s %s 连接成功，等待 %.1fs 再使用 GATT / 订阅 Notify",
             self.address,
             _LOG_SETTLE,
@@ -290,7 +302,7 @@ class MerossBLEDevice:
         Bleak returns the in-memory table if ``services`` is already set, so a
         plain ``get_services()`` is a no-op after an incomplete connect.
         """
-        _LOGGER.info(
+        _LOGGER.debug(
             "%s %s 同连接重新拉取 GATT 服务（不 RemoveDevice）",
             self.address,
             _LOG_REDISCOVER,
@@ -308,7 +320,7 @@ class MerossBLEDevice:
                 if public_get is not None:
                     await public_get()
         except Exception as err:  # noqa: BLE001
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "%s %s get_services failed: %s",
                 self.address,
                 _LOG_REDISCOVER,
@@ -335,7 +347,7 @@ class MerossBLEDevice:
         try:
             cleared = await clear_cache(self.address)
         except Exception as err:  # noqa: BLE001
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "%s %s clear_cache raised (non-BlueZ or D-Bus): %s",
                 self.address,
                 _LOG_CLEAR,
@@ -344,7 +356,7 @@ class MerossBLEDevice:
 
         # Advertisement heard before RemoveDevice still points at a dead path.
         self._last_adv_monotonic = None
-        _LOGGER.warning(
+        _LOGGER.debug(
             "%s %s 补发现仍不完整，已断开并 clear_cache=%s；"
             "等待新广告后再连一次（Linux/BlueZ 有效）",
             self.address,
@@ -377,7 +389,7 @@ class MerossBLEDevice:
         client: BleakClientWithServiceCache,
         callback: Callable[[int, bytearray], None],
     ) -> None:
-        _LOGGER.info(
+        _LOGGER.debug(
             "%s %s subscribing char=%s",
             self.address,
             _LOG_NOTIFY,
@@ -386,7 +398,7 @@ class MerossBLEDevice:
         try:
             await client.start_notify(MEROSS_CHAR_NOTIFY, callback)
         except Exception as err:  # noqa: BLE001
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "%s %s FAIL char=%s: %s",
                 self.address,
                 _LOG_NOTIFY,
@@ -394,7 +406,7 @@ class MerossBLEDevice:
                 err,
             )
             raise
-        _LOGGER.info(
+        _LOGGER.debug(
             "%s %s OK char=%s",
             self.address,
             _LOG_NOTIFY,
@@ -402,17 +414,20 @@ class MerossBLEDevice:
         )
 
     def _adv_is_fresh(self) -> bool:
+        info = self._last_service_info()
+        if info is not None:
+            return (time.monotonic() - info.time) <= GATT_FRESH_ADV_SECONDS
         if self._last_adv_monotonic is None:
             return False
         return (time.monotonic() - self._last_adv_monotonic) <= GATT_FRESH_ADV_SECONDS
 
     async def _async_wait_for_connect_window(self, *, reason: str) -> None:
-        """Wait for a fresh advertisement unless one was just received."""
+        """Wait for a live advertisement; macOS cache is not a connect window."""
         if self._wait_advertisement is None:
             return
         if self._adv_is_fresh():
             _LOGGER.debug(
-                "%s: %s — recent advertisement (≤%.0fs), connecting immediately",
+                "%s: %s — heard advertisement ≤%.0fs ago, connecting",
                 self.address,
                 reason,
                 GATT_FRESH_ADV_SECONDS,
@@ -425,7 +440,7 @@ class MerossBLEDevice:
             GATT_ADV_WAIT_TIMEOUT,
         )
         if not await self._wait_advertisement(GATT_ADV_WAIT_TIMEOUT):
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "%s: %s — no advertisement within %.0fs; trying cached BLEDevice",
                 self.address,
                 reason,
@@ -433,7 +448,7 @@ class MerossBLEDevice:
             )
 
     async def _async_prepare_gatt_attempt(self, attempt: int) -> None:
-        """Align retries with the device's advertise/connectable window."""
+        """Connect immediately first; after a failure wait for a live advertisement."""
         if attempt > 1:
             await self._async_wait_for_connect_window(
                 reason=f"GATT retry {attempt}/{self.retry_count}"
@@ -563,7 +578,6 @@ class MerossBLEDevice:
 
     async def async_send_heartbeat(self) -> bool:
         """Send GATT heartbeat to wake firmware and refresh advertisements."""
-        await self._async_wait_for_connect_window(reason="status sync heartbeat")
         frame = build_heartbeat_frame(self.subdev_type, self._next_msg_id())
         _LOGGER.debug(
             "%s: heartbeat GATT write starting frame=%s",
@@ -585,8 +599,6 @@ class MerossBLEDevice:
 
     async def identify(self) -> bool:
         """Send Identify (beep/flash) over GATT."""
-        # Prefer connecting on a fresh advertisement window; skip the wait when
-        # we just heard the device (typical UI case after sensors updated).
         await self._async_wait_for_connect_window(reason="Identify")
         frame = build_identify_frame(self.subdev_type, self._next_msg_id())
         _LOGGER.debug(
@@ -667,14 +679,15 @@ class MerossBLEDevice:
                 )
             except Exception as err:  # noqa: BLE001
                 last_error = err
-                _LOGGER.warning(
+                log = _LOGGER.warning if attempt == self.retry_count else _LOGGER.debug
+                log(
                     "%s history fetch failed (%s/%s): %s",
                     self.address,
                     attempt,
                     self.retry_count,
                     err,
                 )
-                if self._is_slot_or_inprogress_error(err):
+                if attempt < self.retry_count:
                     await asyncio.sleep(GATT_INPROGRESS_COOLDOWN)
         if last_error:
             raise MerossBLEError(str(last_error)) from last_error
@@ -825,7 +838,8 @@ class MerossBLEDevice:
                 return await self._execute_once(frame)
             except Exception as err:  # noqa: BLE001
                 last_error = err
-                _LOGGER.warning(
+                log = _LOGGER.warning if attempt == self.retry_count else _LOGGER.debug
+                log(
                     "%s frame failed (%s/%s): %s",
                     self.address,
                     attempt,
@@ -870,7 +884,7 @@ class MerossBLEDevice:
         notify.clear()
         payload_box.pop("data", None)
         frame = frame_factory()
-        _LOGGER.info(
+        _LOGGER.debug(
             "%s %s 等待Notify应答 timeout=%.1fs frame=%s",
             self.address,
             _LOG_TIMEOUT,
@@ -884,7 +898,7 @@ class MerossBLEDevice:
             async with asyncio.timeout(timeout):
                 await notify.wait()
         except TimeoutError:
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "%s %s Notify应答超时 timeout=%.1fs frame=%s",
                 self.address,
                 _LOG_TIMEOUT,
@@ -892,7 +906,7 @@ class MerossBLEDevice:
                 frame.hex(),
             )
             return b""
-        _LOGGER.info(
+        _LOGGER.debug(
             "%s %s Notify应答成功 timeout=%.1fs",
             self.address,
             _LOG_TIMEOUT,
