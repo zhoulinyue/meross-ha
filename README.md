@@ -1,10 +1,10 @@
-# meross-ha
+# meross-ble
 
 Python library for [Meross](https://www.meross.com/) Bluetooth devices. Protocol, advertisement parsing, and GATT helpers live here so Home Assistant (and other projects) only deal with entities and coordinators.
 
 This package has **no Home Assistant dependency**.
 
-Install name: `meross-ha`. Import name: `meross_ha`.
+Install name: `meross-ble`. Import name: `meross_ble`.
 
 ## Supported models
 
@@ -18,19 +18,19 @@ Install name: `meross-ha`. Import name: `meross_ha`.
 ## Install
 
 ```bash
-pip install meross-ha
+pip install meross-ble
 ```
 
 Until published to PyPI:
 
 ```bash
-pip install -e D:\workspace\meross-ha
+pip install -e D:\workspace\meross-ble
 ```
 
 Home Assistant custom component (`meross_rpc`) should use:
 
 ```bash
-hass --skip-pip-packages meross_ha
+hass --skip-pip-packages meross_ble
 ```
 
 after an editable install.
@@ -38,7 +38,7 @@ after an editable install.
 ## Usage
 
 ```python
-from meross_ha import (
+from meross_ble import (
     MerossModel,
     create_device,
     parse_advertisement_data,
@@ -73,10 +73,10 @@ Matches the latest `meross_rpc` BLE path:
 
 | Module | Role |
 |--------|------|
-| `meross_ha.parser` | BLE advertisement parse |
-| `meross_ha.protocol` | TLV frames, CRC, history decode |
-| `meross_ha.device` | Device state + GATT Identify / heartbeat / history |
-| `meross_ha.psychrometrics` | Dew point, absolute humidity, VPD |
+| `meross_ble.parser` | BLE advertisement parse |
+| `meross_ble.protocol` | TLV frames, CRC, history decode |
+| `meross_ble.device` | Device state + GATT Identify / heartbeat / history |
+| `meross_ble.psychrometrics` | Dew point, absolute humidity, VPD |
 
 ## Publish to PyPI
 

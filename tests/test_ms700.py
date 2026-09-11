@@ -1,6 +1,6 @@
 """MS700 button mapping tests."""
 
-from meross_ha.const import (
+from meross_ble.const import (
     ms700_button_enabled,
     ms700_default_button_name,
     ms700_logical_button,
