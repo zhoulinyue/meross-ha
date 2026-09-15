@@ -60,14 +60,15 @@ device.bind_runtime(
 await device.identify()
 ```
 
-## GATT recovery (v0.2)
+## GATT recovery / event handling (v0.2.1)
 
-Matches the latest `meross_rpc` BLE path:
+Synced from `meross_rpc` master (v1.1.9 BLE path):
 
 - settle `GATT_POST_CONNECT_SETTLE` after connect
 - same-connection rediscover (`GATT_REDISCOVER_SETTLE`) before `RemoveDevice`
 - at most one BlueZ `clear_cache` per identify/history operation
 - `GATT_NOTIFY_TIMEOUT` for Notify ACKs
+- MS700: long-press / unmapped events do not advance `last_accepted` (short press after long press still fires)
 
 ## Layout
 
