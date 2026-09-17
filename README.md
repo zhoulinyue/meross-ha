@@ -60,7 +60,7 @@ device.bind_runtime(
 await device.identify()
 ```
 
-## GATT recovery / event handling (v0.2.1)
+## GATT recovery / event handling (v0.2.2)
 
 Synced from `meross_rpc` master (v1.1.9 BLE path):
 
@@ -82,5 +82,5 @@ Synced from `meross_rpc` master (v1.1.9 BLE path):
 ## Publish to PyPI
 
 1. Create a PyPI project and GitHub Trusted Publisher for this repo
-2. Tag a release: `git tag v0.2.0 && git push --tags`
+2. Tag a release: `git tag v0.2.2 && git push --tags`
 3. The `publish` workflow uploads sdist + wheel
